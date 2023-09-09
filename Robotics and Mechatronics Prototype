@@ -1,0 +1,218 @@
+#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h>
+#include "DHT.h"
+#define DHTTYPE DHT11 
+#include <RTClib.h>
+#include <LiquidCrystal_I2C.h>
+#include <SD.h>
+#include <Wire.h>;
+const int solarPin = A1;
+const int moistPin = A0;
+const int DHTPIN = 3;
+const int CSPin = 10;
+const int waterPumpPin = 9;
+const int buttonPrevPin = 7;
+const int buttonNextPin = 6;
+float value;
+int moistureThreshold = 500;
+int currentDataComponent = 0;
+
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd1(0x27, 16, 2);
+File myFile;
+
+
+
+
+
+
+
+
+
+void setup()
+
+{
+  
+  rtc.begin();
+  pinMode(solarPin, INPUT);
+  pinMode(CSPin, OUTPUT);  // not sure about pin for SD card
+  pinMode(moistPin, INPUT);
+  pinMode(waterPumpPin, OUTPUT); 
+  pinMode(buttonPrevPin, INPUT);
+  pinMode(buttonNextPin, INPUT);
+  digitalWrite(buttonPrevPin, HIGH); // Enable internal pull-up
+  digitalWrite(buttonNextPin, HIGH);
+  dht.begin();
+
+  // code for the LCD screen set up 
+  lcd.begin();
+  lcd.backlight();
+  Serial.begin(9600);
+  Serial.print("Initializing SD card...");
+  LCDDisplay();
+
+
+//----- setting up the SD card
+  if (!SD.begin(CSPin)) {
+    Serial.println("initialization failed!");
+    return;
+
+  }
+  Serial.println("initialization done.");
+  myFile = SD.open("test.txt");
+
+  if (myFile) {
+    Serial.println("test.txt:");
+  
+    while (myFile.available()) {
+      Serial.write(myFile.read());
+    }
+    myFile.close();
+  } else {
+    Serial.println("error opening test.txt");
+  }
+}
+
+//I need to do the sd card reader
+//rtc unit  and worry about having different seral code thingos, 
+//i need to find out which way that the fan is spining before i turn it on to prevent the risk of breakng in. 
+//write code to make outputs and in puts 
+
+
+void loop()
+
+{
+ // Read Values
+  float solarData = analogRead(solarPin);
+  float humid = dht.readHumidity();
+  float temp = dht.readTemperature();
+  value = analogRead(moistPin);
+  conversion(solarData);
+  RTCDateTime now = rtc.getDateTime();
+
+
+
+   //Screen 1
+  delay(1000);
+  lcd1.setCursor(0,0);
+  lcd1.print("Hello, From");
+  lcd1.setCursor(0,1);
+  lcd1.print("Screen 1");
+  
+  // printing to Console
+  Serial.print("Time: ");
+  Serial.print(now.day());
+  Serial.print(" ");
+  Serial.print(now.hour());
+  Serial.print(":");
+  Serial.print(now.minute());
+  Serial.print(":");
+  Serial.print(now.second());
+  Serial.println();
+  Serial.print("Humidity = ");
+  Serial.print((float)humid,1); // The 1 denotes how many decimal places we want
+  Serial.println("%");         // This library can only return 1 decimal place
+  Serial.print("Temperature = ");
+  Serial.print((float)temp,1);
+  Serial.println("C");
+  delay(1000);
+  Serial.println(value);
+  
+//---------- this code is for the solar sensor 
+void conversion(float sensorValue){
+
+   float voltage = (float)sensorValue * 5 / 1023;
+   Serial.print(voltage);
+   Serial.println("v");
+   
+  }
+
+//--------------- code below for the Sd card
+  RTCDateTime now = rtc.getDateTime();
+
+  if (now.second() % 10 == 0 && now.second() != previousMillis) {
+    previousMillis = now.second(); 
+    // currently logining data every 10 seconds might be to often
+    
+  
+    myFile = SD.open("test.txt", FILE_WRITE);
+    
+    if (myFile) {
+
+      myFile.print("Time: ");
+      myFile.print(now.day());
+      myFile.print(" ");
+      myFile.print(now.hour());
+      myFile.print(":");
+      myFile.print(now.minute());
+      myFile.print(":");
+      myFile.print(now.second());
+      myFile.println();
+      myFile.print("Humidity = ");
+      myFile.print((float)humid, 1); // 1 decimal place
+      myFile.println("%");
+      myFile.print("Temperature = ");
+      myFile.print((float)temp, 1);
+      myFile.println("C");
+      myFile.print("Moisture = ");
+      myFile.print(value);
+      myFile.println("%");
+      myFile.print(voltage);
+      myFile.println("v");
+      myFile.close();  // Close the file
+    } else {
+      Serial.println("error opening test.txt");
+    }
+  }
+// mousture sensor to watering.... not sure if water will damage the sensor.....
+     if (moistureLevel < moistureThreshold) {
+    digitalWrite(waterPumpPin, HIGH);
+    Serial.println("Soil is dry watering the plant.");
+    delay(5000);
+  } else {
+    digitalWrite(waterPumpPin, LOW);
+    Serial.println("Soil moisture is good");
+    delay(5000);
+  }
+
+// push button menu 
+if (digitalRead(buttonPrevPin) == LOW) {
+    currentDataComponent = (currentDataComponent + 3) % 4;
+    delay(500); 
+    displayData();
+  } else if (digitalRead(buttonNextPin) == LOW) {
+    currentDataComponent = (currentDataComponent + 1) % 4;
+    delay(500);
+    displayData();
+  }
+// end of void loop just hard to see on laptop
+}
+
+void LCDDisplay() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  
+  switch (currentDataComponent) {
+    case 0:
+      lcd.print("Humidity = ");
+      lcd.print((float)humid, 1);
+      lcd.print("%");
+      break;
+    case 1:
+      lcd.print("Temperature = ");
+      lcd.print((float)temp, 1);
+      lcd.print("C");
+      break;
+    case 2:
+      lcd.print("Solar = ");
+      lcd.print(voltage);
+      lcd.print("v");
+      break;
+    case 3:
+      lcd.print("Moisture = ");
+      lcd.print(value);
+      lcd.print("%");
+      break;
+  }
+}
+
